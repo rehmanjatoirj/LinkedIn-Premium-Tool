@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Premium Tool",
+  "version": "1.0.0",
+  "description": "Extract LinkedIn Sales Navigator lead profile URLs from search results.",
+
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "clipboardRead",
+    "storage"
+  ],
+
+  "host_permissions": [
+    "https://www.linkedin.com/sales/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/sales/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "action": {
+    "default_title": "LinkedIn Premium Tool",
+    "default_popup": "popup.html"
+  }
+}
+
