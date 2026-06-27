@@ -88,48 +88,114 @@ __scraperDefine('NetworkIntercept', () => {
     return '';
   }
 
-  function parseLinkedInPayload(data) {
+  function linkedInLeadKey(lead) {
+    if (lead.publicIdentifier) return `in:${String(lead.publicIdentifier).toLowerCase()}`;
+    const slug = String(lead.url || '').match(/\/in\/([^/?#]+)/i)?.[1];
+    if (slug) return `in:${slug.toLowerCase()}`;
+    if (lead.salesLeadId) return `sales:${lead.salesLeadId}`;
+    const salesFromUrl = String(lead.url || '').match(/\/sales\/lead\/([^,/?#]+)/i)?.[1];
+    if (salesFromUrl) return `sales:${salesFromUrl}`;
+    return lead.name ? `name:${lead.name.toLowerCase()}` : '';
+  }
+
+  function mergeLinkedInApiLead(base, incoming) {
+    if (!base) return incoming;
+    if (!incoming) return base;
+    const url = buildPublicProfileUrl(incoming) || buildPublicProfileUrl(base) ||
+      (incoming.url?.includes('/in/') ? incoming.url : '') ||
+      (base.url?.includes('/in/') ? base.url : '');
+    return {
+      ...base,
+      ...incoming,
+      name: incoming.name || base.name,
+      title: incoming.title || base.title,
+      company: incoming.company || base.company,
+      email: incoming.email || base.email || '',
+      phone: incoming.phone || base.phone || '',
+      publicIdentifier: incoming.publicIdentifier || base.publicIdentifier || '',
+      salesLeadId: incoming.salesLeadId || base.salesLeadId || '',
+      url: url.includes('/in/') ? url : '',
+      source: incoming.source || base.source
+    };
+  }
+
+  function parseLinkedInRawText(text) {
     const leads = [];
+    if (!text || text.length < 40) return leads;
+
+    const idMatches = [...text.matchAll(/"publicIdentifier"\s*:\s*"([^"\\]+)"/g)];
+    for (const match of idMatches) {
+      const slug = match[1];
+      if (!slug || slug.length < 2) continue;
+      const chunk = text.slice(Math.max(0, match.index - 800), match.index + 4000);
+      const email =
+        chunk.match(/"emailAddress"\s*:\s*"([^"\\]+)"/)?.[1] ||
+        chunk.match(/"email"\s*:\s*"([^"@\\]+@[^"\\]+)"/)?.[1] || '';
+      const phone = chunk.match(/"number"\s*:\s*"([^"\\]+)"/)?.[1] || '';
+      const firstName = chunk.match(/"firstName"\s*:\s*"([^"\\]*)"/)?.[1] || '';
+      const lastName = chunk.match(/"lastName"\s*:\s*"([^"\\]*)"/)?.[1] || '';
+      const salesLeadId = chunk.match(/\/sales\/lead\/([^",/?#]+)/)?.[1] || '';
+
+      leads.push({
+        publicIdentifier: slug,
+        url: `https://www.linkedin.com/in/${slug}`,
+        name: ScraperUtils.normalizeText(`${firstName} ${lastName}`.trim()),
+        email: ScraperUtils.normalizeText(email),
+        phone: ScraperUtils.normalizeText(phone),
+        salesLeadId,
+        source: 'api-text'
+      });
+    }
+
+    const urlMatches = [...text.matchAll(/"linkedinUrl"\s*:\s*"(https:\\\/\\\/(?:www\.)?linkedin\.com\\\/in\\\/[^"\\]+)"/g)];
+    for (const match of urlMatches) {
+      const raw = match[1].replace(/\\\//g, '/');
+      const slug = raw.match(/\/in\/([^/?#]+)/)?.[1];
+      if (!slug) continue;
+      const chunk = text.slice(Math.max(0, match.index - 500), match.index + 2500);
+      leads.push({
+        url: `https://www.linkedin.com/in/${slug}`,
+        publicIdentifier: slug,
+        email: ScraperUtils.normalizeText(chunk.match(/"emailAddress"\s*:\s*"([^"\\]+)"/)?.[1] || ''),
+        phone: ScraperUtils.normalizeText(chunk.match(/"number"\s*:\s*"([^"\\]+)"/)?.[1] || ''),
+        source: 'api-text'
+      });
+    }
+
+    return leads;
+  }
+
+  function parseLinkedInPayload(data) {
+    const leads = parseLinkedInRawText(typeof data === 'string' ? data : JSON.stringify(data));
     walkObject(data, (node) => {
       const name = node.fullName || node.firstName && node.lastName
         ? `${node.firstName} ${node.lastName}`.trim()
         : node.name || node.title?.text || '';
       const publicUrl = buildPublicProfileUrl(node);
-      const fallbackUrl = node.profileUrl || node.navigationUrl || node.linkedinUrl ||
-        (node.entityUrn && String(node.entityUrn).includes('fs_salesProfile')
-          ? `https://www.linkedin.com/sales/lead/${encodeURIComponent(node.entityUrn)}`
-          : '');
+      const salesLeadId =
+        String(node.entityUrn || node.objectUrn || '').match(/fs_salesProfile:([^,)]+)/)?.[1] ||
+        String(node.profileUrl || node.navigationUrl || '').match(/\/sales\/lead\/([^,/?#]+)/)?.[1] || '';
       const title = node.currentTitle || node.headline || node.title?.text || node.defaultPosition?.title || '';
       const company = node.companyName || node.currentCompanyName || node.defaultPosition?.companyName || '';
       const location = node.geoRegion || node.location || node.geoLocation?.defaultLocalizedName || '';
       const industry = node.industry || node.industryName || '';
       const email = extractLinkedInEmail(node);
       const phone = extractLinkedInPhone(node);
+      const publicIdentifier = node.publicIdentifier || node.vanityName || '';
 
-      let normalizedUrl = publicUrl;
-      if (!normalizedUrl && fallbackUrl) {
-        try {
-          normalizedUrl = ScraperUtils.normalizeUrl(
-            fallbackUrl.startsWith('http') ? fallbackUrl : new URL(fallbackUrl, 'https://www.linkedin.com').href
-          );
-        } catch {
-          normalizedUrl = ScraperUtils.normalizeUrl(fallbackUrl);
-        }
-      }
-
-      if (!(name || normalizedUrl)) return;
-      if (!normalizedUrl.includes('/in/') && !normalizedUrl.includes('/sales/') && !name) return;
+      if (!(name || publicUrl || publicIdentifier || email || phone)) return;
 
       leads.push({
         name: ScraperUtils.normalizeText(name),
         title: ScraperUtils.normalizeText(title),
         company: ScraperUtils.normalizeText(company),
-        url: normalizedUrl,
+        url: publicUrl || (publicIdentifier ? `https://www.linkedin.com/in/${publicIdentifier}` : ''),
         location: ScraperUtils.normalizeText(location),
         industry: ScraperUtils.normalizeText(industry),
         email: ScraperUtils.normalizeText(email),
         phone: ScraperUtils.normalizeText(phone),
-        publicIdentifier: node.publicIdentifier || node.vanityName || '',
+        publicIdentifier,
+        salesLeadId,
         source: 'api'
       });
     });
@@ -212,9 +278,12 @@ __scraperDefine('NetworkIntercept', () => {
 
   function storeLinkedInLeads(leads) {
     for (const lead of leads) {
-      const key = lead.url || lead.name;
-      if (key && !linkedinLeads.has(key)) {
-        linkedinLeads.set(key, lead);
+      const key = linkedInLeadKey(lead);
+      if (!key) continue;
+      const existing = linkedinLeads.get(key);
+      linkedinLeads.set(key, mergeLinkedInApiLead(existing, lead));
+      if (lead.salesLeadId) {
+        linkedinLeads.set(`sales:${lead.salesLeadId}`, mergeLinkedInApiLead(linkedinLeads.get(`sales:${lead.salesLeadId}`), lead));
       }
     }
   }
@@ -232,17 +301,16 @@ __scraperDefine('NetworkIntercept', () => {
     if (!text || text.length < 20) return;
 
     const isLinkedIn = /linkedin\.com/i.test(url) &&
-      (/sales-api|voyager|graphql|salesApi/i.test(url));
+      (/sales-api|voyager|graphql|salesApi|identity/i.test(url));
     const isMaps = /google\.com\/maps|maps\.google|maps\.googleapis\.com/i.test(url);
 
     if (isLinkedIn) {
       const data = tryParseJson(text);
-      if (data) {
-        const leads = parseLinkedInPayload(data);
-        if (leads.length) {
-          storeLinkedInLeads(leads);
-          ScraperUtils.log(SCOPE, `Captured ${leads.length} LinkedIn leads from API`);
-        }
+      const leads = parseLinkedInPayload(data || text);
+      leads.push(...parseLinkedInRawText(text));
+      if (leads.length) {
+        storeLinkedInLeads(leads);
+        ScraperUtils.log(SCOPE, `Captured ${leads.length} LinkedIn leads from API`);
       }
     }
 
@@ -303,7 +371,23 @@ __scraperDefine('NetworkIntercept', () => {
   }
 
   function getLinkedInLeads() {
-    return Array.from(linkedinLeads.values());
+    const seen = new Set();
+    const results = [];
+    for (const [key, lead] of linkedinLeads.entries()) {
+      if (key.startsWith('sales:') && linkedinLeads.has(`in:${lead.publicIdentifier?.toLowerCase()}`)) continue;
+      const dedupe = lead.url || key;
+      if (seen.has(dedupe)) continue;
+      seen.add(dedupe);
+      if (lead.url?.includes('/in/') || lead.email || lead.phone || lead.name) {
+        results.push(lead);
+      }
+    }
+    return results;
+  }
+
+  function getLinkedInLeadBySalesId(salesLeadId) {
+    if (!salesLeadId) return null;
+    return linkedinLeads.get(`sales:${salesLeadId}`) || null;
   }
 
   function getMapsPlaces() {
@@ -326,6 +410,7 @@ __scraperDefine('NetworkIntercept', () => {
   return {
     install,
     getLinkedInLeads,
+    getLinkedInLeadBySalesId,
     getMapsPlaces,
     clear,
     hasLinkedInData,

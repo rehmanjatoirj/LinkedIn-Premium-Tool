@@ -105,12 +105,12 @@ function setScraperModeUI(type) {
 
   const startBtn = $('start');
   startBtn.classList.toggle('maps-mode', isMaps);
-  startBtn.textContent = isMaps ? 'Start Collecting Businesses' : 'Start Scraping';
+  startBtn.textContent = isMaps ? 'Start Collecting Businesses' : 'Start Scraping Leads';
 
   $('countLabel').textContent = isMaps ? 'Businesses collected' : 'Leads collected';
   $('recordsTitle').textContent = isMaps ? 'Businesses' : 'Recent Leads';
   $('brandSub').textContent = isMaps ? 'Full contact details from Maps' : isLinkedIn ? 'Sales Navigator leads' : 'Sales & local leads';
-  $('copy').textContent = isMaps ? 'Copy Leads (name · phone · email · address)' : 'Copy Leads (name · email · phone · url)';
+  $('copy').textContent = isMaps ? 'Copy Leads (name · phone · email · address)' : 'Copy Leads (name · email · phone · profile url)';
 
   const fill = $('progressFill');
   fill.classList.toggle('maps', isMaps);

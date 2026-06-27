@@ -55,11 +55,36 @@
       "[class*=\"search-results\"]",
       "main"
     ],
+    "leadPanel": [
+      "[data-sn-view-name=\"lead-panel\"]",
+      "#lead-sticky-sidebar",
+      "aside.scaffold-layout__aside",
+      "section[data-x--lead--profile-card-container]",
+      "div[class*=\"lead-panel\"]",
+      "div[role=\"complementary\"]"
+    ],
+    "publicProfileLink": [
+      "a[href*=\"linkedin.com/in/\"]",
+      "a[href*=\"/in/\"]"
+    ],
+    "contactEmail": [
+      "a[href^=\"mailto:\"]",
+      "[data-anonymize=\"email\"]",
+      "span[data-anonymize=\"email\"]"
+    ],
+    "contactPhone": [
+      "a[href^=\"tel:\"]",
+      "[data-anonymize=\"phone\"]",
+      "span[data-anonymize=\"phone\"]"
+    ],
     "apiUrlPatterns": [
       "sales-api/salesApiLeadSearch",
       "sales-api/salesApiPeopleSearch",
+      "sales-api/salesApiProfiles",
+      "sales-api/salesApiMailbox",
       "voyager/api/voyagerSearchDashClusters",
-      "voyager/api/graphql"
+      "voyager/api/graphql",
+      "voyager/api/identity/profiles"
     ]
   },
   "googleMaps": {

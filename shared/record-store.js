@@ -41,6 +41,8 @@
     if (scraperType === 'google-maps') {
       return (record.url || `${record.name}|${record.address || ''}`).trim();
     }
+    const inSlug = String(record.url || '').match(/\/in\/([^/?#]+)/i)?.[1];
+    if (inSlug) return `https://www.linkedin.com/in/${inSlug.toLowerCase()}`;
     return (record.url || record.name || '').trim();
   }
 
