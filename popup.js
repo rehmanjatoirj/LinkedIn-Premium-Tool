@@ -85,7 +85,8 @@ async function loadSettingsIntoUI() {
   const result = await chrome.storage.local.get([SETTINGS_STORAGE_KEY]);
   const s = result[SETTINGS_STORAGE_KEY] || {};
   $('collectAll').checked = Boolean(s.collectAllPages);
-  $('delay').value = String(Number.isFinite(Number(s.delayMs)) ? Number(s.delayMs) : 650);
+  $('linkedinQuick').checked = s.fetchContactFromPanel === false;
+  $('delay').value = String(Number.isFinite(Number(s.delayMs)) ? Number(s.delayMs) : 400);
   const linkedinMax = Number.isFinite(Number(s.linkedinMaxResults)) ? Number(s.linkedinMaxResults) : 25;
   $('linkedinMax').value = String(Math.min(500, Math.max(1, linkedinMax)));
   const mapsMax = Number.isFinite(Number(s.mapsMaxResults)) ? Number(s.mapsMaxResults) : 20;
@@ -379,6 +380,7 @@ $('start').addEventListener('click', async () => {
       await setSettings({
         delayMs: Math.max(0, Number($('delay').value || 0)),
         collectAllPages: $('collectAll').checked,
+        fetchContactFromPanel: !$('linkedinQuick').checked,
         linkedinMaxResults: Math.min(500, Math.max(1, Number($('linkedinMax').value || 25)))
       });
     } else {
@@ -395,7 +397,9 @@ $('start').addEventListener('click', async () => {
     setStatusMessage(
       currentScraperType === SCRAPER_MAPS
         ? `Clicking up to ${$('mapsMax').value || 20} results — extracting full contact details…`
-        : `Collecting up to ${$('linkedinMax').value || 25} leads with profile URLs and contact info…`,
+        : $('linkedinQuick').checked
+          ? `Quick collect: up to ${$('linkedinMax').value || 25} leads (URLs only, no panel)…`
+          : `Collecting up to ${$('linkedinMax').value || 25} leads with profile URLs and contact info…`,
       ''
     );
 

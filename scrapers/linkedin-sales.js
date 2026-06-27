@@ -2,10 +2,26 @@
 __scraperDefine('LinkedInSalesScraper', () => {
   const SCOPE = 'linkedin';
 
+  const TIMING = {
+    scrollSettle: 200,
+    panelPollMs: 100,
+    panelTimeoutMs: 8000,
+    panelSettle: 200,
+    closePanel: 200,
+    retryGap: 350,
+    batchScroll: 250,
+    startup: 400
+  };
+
   let sel = {};
   let attemptedCardKeys = new Set();
   let savedRecordKeys = new Set();
-  let linkedinSettings = { linkedinMaxResults: 25, delayMs: 800, collectAllPages: false };
+  let linkedinSettings = {
+    linkedinMaxResults: 25,
+    delayMs: 400,
+    collectAllPages: false,
+    fetchContactFromPanel: true
+  };
   let progress = { total: 0, processed: 0, success: 0, failed: 0, startTime: 0, elapsedMs: 0 };
 
   async function loadSettings() {
@@ -15,8 +31,9 @@ __scraperDefine('LinkedInSalesScraper', () => {
         500,
         Math.max(1, Number(settings.linkedinMaxResults) || ScraperConstants.LINKEDIN_DEFAULT_MAX_RESULTS)
       ),
-      delayMs: Math.max(300, Number.isFinite(Number(settings.delayMs)) ? Number(settings.delayMs) : 800),
-      collectAllPages: Boolean(settings.collectAllPages)
+      delayMs: Math.max(0, Number.isFinite(Number(settings.delayMs)) ? Number(settings.delayMs) : 400),
+      collectAllPages: Boolean(settings.collectAllPages),
+      fetchContactFromPanel: settings.fetchContactFromPanel !== false
     };
   }
 
@@ -308,7 +325,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
     return false;
   }
 
-  async function waitForLeadPanel(preview, timeoutMs = 15000) {
+  async function waitForLeadPanel(preview, timeoutMs = TIMING.panelTimeoutMs) {
     const salesLeadId = preview.salesLeadId;
     const apiCountBefore = NetworkIntercept.getLinkedInLeads().length;
 
@@ -322,14 +339,24 @@ __scraperDefine('LinkedInSalesScraper', () => {
       }
 
       return NetworkIntercept.getLinkedInLeads().length > apiCountBefore;
-    }, { timeoutMs, pollMs: 200 });
+    }, { timeoutMs, pollMs: TIMING.panelPollMs });
 
     if (!matched) {
       ScraperUtils.warn(SCOPE, 'Panel did not confirm lead for:', preview.name || salesLeadId);
     }
 
-    await ScraperUtils.sleep(500);
+    await ScraperUtils.sleep(TIMING.panelSettle);
     return findLeadPanel();
+  }
+
+  function enrichFromApi(preview) {
+    return finalizeRecord(mergeApiMatches({ ...preview }, preview.salesLeadId), preview.salesLeadId);
+  }
+
+  function canSkipPanel(record) {
+    if (!record.url?.includes('/in/')) return false;
+    if (!linkedinSettings.fetchContactFromPanel) return true;
+    return Boolean(record.email || record.phone);
   }
 
   function extractContactFromRoot(root, preview) {
@@ -436,10 +463,10 @@ __scraperDefine('LinkedInSalesScraper', () => {
       'button[aria-label*="Dismiss" i], button[aria-label*="Close" i], button[aria-label*="Back" i]'
     );
     closeBtn?.click();
-    await ScraperUtils.sleep(350);
+    await ScraperUtils.sleep(TIMING.closePanel);
   }
 
-  async function clickLeadAndEnrich(preview) {
+  async function clickLeadAndEnrich(preview, prefilled) {
     const salesLeadId = preview.salesLeadId;
     if (!salesLeadId) throw new Error('Missing sales lead id');
 
@@ -454,19 +481,19 @@ __scraperDefine('LinkedInSalesScraper', () => {
     } catch {
       card.scrollIntoView(true);
     }
-    await ScraperUtils.sleep(350);
+    await ScraperUtils.sleep(TIMING.scrollSettle);
 
     ScraperUtils.log(SCOPE, 'Opening lead panel for:', preview.name || salesLeadId);
     clickTarget.click();
 
     const panel = await waitForLeadPanel(preview);
 
-    let record = mergeLeadRecords(preview, extractContactFromRoot(panel, preview));
+    let record = mergeLeadRecords(prefilled || preview, extractContactFromRoot(panel, preview));
     record = mergeApiMatches(record, salesLeadId);
     record = finalizeRecord(record, salesLeadId);
 
     if (!record.url?.includes('/in/')) {
-      await ScraperUtils.sleep(600);
+      await ScraperUtils.sleep(TIMING.retryGap);
       const retryPanel = findLeadPanel();
       record = finalizeRecord(
         mergeApiMatches(mergeLeadRecords(record, extractContactFromRoot(retryPanel, preview)), salesLeadId),
@@ -581,7 +608,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
       const visibleCount = findResultCards().length;
       if (container) container.scrollTop += 400;
       else window.scrollBy(0, 400);
-      await ScraperUtils.sleep(350);
+      await ScraperUtils.sleep(TIMING.batchScroll);
 
       if (visibleCount === lastSeenCount) stable++;
       else {
@@ -635,10 +662,18 @@ __scraperDefine('LinkedInSalesScraper', () => {
       progress.elapsedMs = Date.now() - progress.startTime;
 
       let record = preview;
+      let usedPanel = false;
       try {
-        record = await clickLeadAndEnrich(preview);
+        const apiRecord = enrichFromApi(preview);
+        if (canSkipPanel(apiRecord)) {
+          record = apiRecord;
+          ScraperUtils.log(SCOPE, 'Fast collect:', record.name, record.url);
+        } else {
+          record = await clickLeadAndEnrich(preview, apiRecord);
+          usedPanel = true;
+        }
       } catch (err) {
-        ScraperUtils.warn(SCOPE, 'Panel click failed, using fallbacks for:', preview.name, err.message || err);
+        ScraperUtils.warn(SCOPE, 'Enrich failed, using fallbacks for:', preview.name, err.message || err);
         record = finalizeRecord(preview, preview.salesLeadId);
       }
 
@@ -661,7 +696,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
 
       await sendProgress();
       if (progress.success >= linkedinSettings.linkedinMaxResults) return true;
-      if (delayMs > 0) await ScraperUtils.sleepJitter(delayMs);
+      if (usedPanel && delayMs > 0) await ScraperUtils.sleepJitter(delayMs);
     }
 
     return true;
@@ -694,7 +729,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
     const maxResults = linkedinSettings.linkedinMaxResults;
 
     await ScraperUtils.waitForElement(sel.card || sel.url, { timeoutMs: 12000 });
-    await ScraperUtils.sleepJitter(600);
+    await ScraperUtils.sleepJitter(TIMING.startup);
 
     let pageNum = 1;
 

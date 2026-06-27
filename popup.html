@@ -509,9 +509,16 @@
           <label for="linkedinMax">Max leads to collect</label>
           <input id="linkedinMax" type="number" min="1" max="500" value="25" />
         </div>
+        <div class="field">
+          <label class="check-row">
+            <input id="linkedinQuick" type="checkbox" />
+            Quick mode (skip panel — faster, may miss email/phone)
+          </label>
+        </div>
         <div class="field field-row">
           <label for="delay">Delay between leads (ms)</label>
-          <input id="delay" type="number" min="0" step="50" value="650" />
+          <input id="delay" type="number" min="0" step="50" value="400" />
+          <small style="opacity:0.7;display:block;margin-top:4px;">0 = fastest. 400 ≈ 8–12 leads/min in quick mode.</small>
         </div>
       </section>
 
