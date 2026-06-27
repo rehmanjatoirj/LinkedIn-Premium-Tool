@@ -41,8 +41,14 @@
     if (scraperType === 'google-maps') {
       return (record.url || `${record.name}|${record.address || ''}`).trim();
     }
+    if (record.salesLeadId) {
+      return `sales:${record.salesLeadId}`;
+    }
     const inSlug = String(record.url || '').match(/\/in\/([^/?#]+)/i)?.[1];
     if (inSlug) return `https://www.linkedin.com/in/${inSlug.toLowerCase()}`;
+    const name = String(record.name || '').trim().toLowerCase();
+    const company = String(record.company || '').trim().toLowerCase();
+    if (name) return `name:${name}|${company}`;
     return (record.url || record.name || '').trim();
   }
 
