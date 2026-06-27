@@ -1,25 +1,67 @@
 {
   "manifest_version": 3,
   "name": "LinkedIn Premium Tool",
-  "version": "1.0.0",
-  "description": "Extract LinkedIn Sales Navigator lead profile URLs from search results.",
+  "version": "2.1.2",
+  "description": "Scrape LinkedIn Sales Navigator leads and Google Maps business profiles with CSV, Excel, and JSON export.",
 
   "permissions": [
     "activeTab",
     "scripting",
-    "clipboardRead",
     "storage"
   ],
 
   "host_permissions": [
-    "https://www.linkedin.com/sales/*"
+    "https://www.linkedin.com/sales/*",
+    "https://www.google.com/maps/*",
+    "https://maps.google.com/*"
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["shared/selectors.json"],
+      "matches": [
+        "https://www.linkedin.com/*",
+        "https://www.google.com/*",
+        "https://maps.google.com/*"
+      ]
+    }
   ],
 
   "content_scripts": [
     {
       "matches": ["https://www.linkedin.com/sales/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "js": [
+        "shared/module-loader.js",
+        "shared/constants.js",
+        "shared/utils.js",
+        "shared/selectors.js",
+        "shared/network-intercept.js",
+        "shared/retry-queue.js",
+        "shared/watchdog.js",
+        "shared/preflight.js",
+        "scrapers/linkedin-sales.js",
+        "content-linkedin.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.google.com/maps/*",
+        "https://maps.google.com/*"
+      ],
+      "js": [
+        "shared/module-loader.js",
+        "shared/constants.js",
+        "shared/utils.js",
+        "shared/selectors.js",
+        "shared/network-intercept.js",
+        "shared/retry-queue.js",
+        "shared/watchdog.js",
+        "shared/preflight.js",
+        "scrapers/google-maps.js",
+        "content-maps.js"
+      ],
+      "run_at": "document_start"
     }
   ],
 
@@ -32,4 +74,3 @@
     "default_popup": "popup.html"
   }
 }
-

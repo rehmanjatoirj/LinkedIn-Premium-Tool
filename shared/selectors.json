@@ -1,0 +1,139 @@
+{
+  "version": "1.0.0",
+  "linkedin": {
+    "card": [
+      "li.artdeco-list__item",
+      "[data-view-name=\"search-results-entity\"]",
+      "ol.search-results__result-list > li",
+      "div[data-x--search-results-container] li.artdeco-list__item",
+      "[class*=\"search-results\"] li.artdeco-list__item",
+      "div[class*=\"results-list\"] li"
+    ],
+    "name": [
+      "span[data-anonymize=\"person-name\"]",
+      "a[data-anonymize=\"person-name\"]",
+      "a[href*=\"/sales/lead/\"] span[aria-hidden=\"true\"]",
+      "a[href*=\"/sales/lead/\"]",
+      ".entity-result__title-text a span",
+      ".artdeco-entity-lockup__title a"
+    ],
+    "title": [
+      "span[data-anonymize=\"title\"]",
+      ".entity-result__primary-subtitle",
+      ".artdeco-entity-lockup__subtitle"
+    ],
+    "company": [
+      "span[data-anonymize=\"company-name\"]",
+      "a[data-anonymize=\"company-name\"]",
+      ".entity-result__secondary-subtitle",
+      "a[href*=\"/sales/company/\"]"
+    ],
+    "location": [
+      "span[data-anonymize=\"location\"]",
+      ".entity-result__summary",
+      ".artdeco-entity-lockup__caption"
+    ],
+    "industry": [
+      "span[data-anonymize=\"industry\"]",
+      "[data-anonymize=\"industry\"]"
+    ],
+    "url": [
+      "a[href*=\"/sales/lead/\"]",
+      "a[href*=\"/in/\"]",
+      "a[data-control-name=\"view_lead_panel_via_search_lead_name\"]",
+      "a[data-control-name=\"search_srp_result\"]"
+    ],
+    "nextPage": [
+      "button[aria-label*=\"Next\" i][aria-disabled=\"false\"]",
+      "button[aria-label*=\"Next\" i]:not([aria-disabled=\"true\"])",
+      "button[title*=\"Next\" i]:not([disabled])",
+      "a[aria-label*=\"Next\" i]"
+    ],
+    "feedContainer": [
+      ".search-results__result-list",
+      "ol.artdeco-list",
+      "[class*=\"search-results\"]",
+      "main"
+    ],
+    "apiUrlPatterns": [
+      "sales-api/salesApiLeadSearch",
+      "sales-api/salesApiPeopleSearch",
+      "voyager/api/voyagerSearchDashClusters",
+      "voyager/api/graphql"
+    ]
+  },
+  "googleMaps": {
+    "feed": [
+      "div[role=\"feed\"]",
+      "[role=\"feed\"]",
+      "div[aria-label*=\"Results\" i]",
+      "div.m6QErb[aria-label]"
+    ],
+    "resultLink": [
+      "a[href*=\"/maps/place/\"]",
+      "a.hfpxzc",
+      "a[aria-label][href*=\"place\"]"
+    ],
+    "listItem": [
+      "div[role=\"feed\"] > div > div[jsaction]",
+      "div[role=\"article\"]",
+      "div.Nv2PK",
+      "a.hfpxzc"
+    ],
+    "listWebsite": [
+      "a[aria-label*=\"Website\" i]",
+      "a[data-item-id=\"authority\"]",
+      "a[data-tooltip*=\"Website\" i]",
+      "button[aria-label*=\"Website\" i]"
+    ],
+    "name": [
+      "h1.DUwDvf",
+      "h1[class*=\"fontHeadline\"]",
+      "div[role=\"main\"] h1",
+      "h1",
+      "[data-attrid=\"title\"]"
+    ],
+    "category": [
+      "button[jsaction*=\"category\"]",
+      "button.DkEaL",
+      "button[class*=\"fontBodyMedium\"]"
+    ],
+    "rating": [
+      "div.F7nice span[aria-hidden=\"true\"]",
+      "span[aria-label*=\"stars\" i]"
+    ],
+    "reviewCount": [
+      "button[aria-label*=\"reviews\" i]",
+      "span[aria-label*=\"reviews\" i]"
+    ],
+    "address": [
+      "button[data-item-id=\"address\"] .Io6YTe",
+      "button[data-item-id=\"address\"]",
+      "button[data-item-id^=\"address:\"]",
+      "button[aria-label*=\"Address\" i]"
+    ],
+    "phone": [
+      "button[data-item-id^=\"phone:tel:\"] .Io6YTe",
+      "button[data-item-id^=\"phone:tel:\"]",
+      "button[data-item-id*=\"phone\"] .Io6YTe",
+      "button[data-item-id*=\"phone\"]",
+      "button[aria-label*=\"Phone\" i]",
+      "a[data-item-id*=\"phone\"]"
+    ],
+    "website": [
+      "a[data-item-id=\"authority\"] .Io6YTe",
+      "a[data-item-id=\"authority\"]",
+      "a[aria-label*=\"Website\" i]"
+    ],
+    "hours": [
+      "button[data-item-id=\"oh\"]",
+      "button[aria-label*=\"Hours\" i]"
+    ],
+    "apiUrlPatterns": [
+      "/maps/preview/place",
+      "/search",
+      "maps/rpc",
+      "maps.googleapis.com/maps/api/place"
+    ]
+  }
+}

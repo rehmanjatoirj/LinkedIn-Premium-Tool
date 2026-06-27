@@ -1,0 +1,9 @@
+{
+  "name": "linkedin-premium-tool",
+  "version": "2.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/selectors.test.js",
+    "test:selectors": "node --test tests/selectors.test.js"
+  }
+}

@@ -1,21 +1,24 @@
-const LEADS_STORAGE_KEY = 'leads';
+importScripts('shared/module-loader.js', 'shared/constants.js', 'shared/record-store.js');
+
+const ScraperConstants = globalThis.ScraperConstants;
+const RecordStore = globalThis.RecordStore;
+const { MSG, STATE_STORAGE_KEY, MAPS_QUEUE_STORAGE_KEY, STATUS_IDLE, STATUS_COMPLETE, STATUS_STOPPED } = ScraperConstants;
+
+RecordStore.migrateFromChromeStorage().catch((err) => {
+  console.warn('[background] IDB migration:', err);
+});
 
 function nowTs() {
   return Date.now();
 }
 
-function normalizeUrl(url) {
-  if (!url) return '';
-  return String(url).trim();
+async function getState() {
+  const result = await chrome.storage.local.get([STATE_STORAGE_KEY]);
+  return result[STATE_STORAGE_KEY] || { status: STATUS_IDLE, progress: null };
 }
 
-async function getLeads() {
-  const result = await chrome.storage.local.get([LEADS_STORAGE_KEY]);
-  return result[LEADS_STORAGE_KEY] || [];
-}
-
-async function setLeads(leads) {
-  await chrome.storage.local.set({ [LEADS_STORAGE_KEY]: leads });
+async function setState(state) {
+  await chrome.storage.local.set({ [STATE_STORAGE_KEY]: state });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -23,44 +26,117 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     try {
       if (!message || typeof message.type !== 'string') return;
 
-      if (message.type === 'LEAD_URL_COLLECTED') {
-        const { name, url } = message;
-        const cleanUrl = normalizeUrl(url);
-        if (!cleanUrl) {
+      switch (message.type) {
+        case MSG.RECORD_COLLECTED: {
+          const { scraperType, record } = message;
+          const result = await RecordStore.addRecord(scraperType, record);
+          if (!result.duplicate && result.count != null) {
+            const state = await getState();
+            await setState({ ...state, lastRecordAt: nowTs() });
+          }
+          sendResponse?.({ ok: true, ...result });
           return;
         }
 
-        const leads = await getLeads();
-        const exists = leads.some((l) => l.url === cleanUrl);
-        if (!exists) {
-          leads.push({
-            name: String(name || '').trim(),
-            url: cleanUrl,
-            timestamp: nowTs()
+        case MSG.PROGRESS_UPDATE: {
+          const state = await getState();
+          await setState({
+            ...state,
+            status: state.status === STATUS_STOPPED ? STATUS_STOPPED : 'running',
+            scraperType: message.scraperType,
+            progress: message.progress,
+            updatedAt: nowTs()
           });
-          await setLeads(leads);
+          sendResponse?.({ ok: true });
+          return;
         }
 
-        // Optional: return updated count.
-        sendResponse?.({ ok: true, count: (await getLeads()).length });
-        return;
-      }
+        case MSG.SCRAPING_COMPLETE: {
+          await setState({
+            status: STATUS_COMPLETE,
+            scraperType: message.scraperType,
+            progress: message.progress,
+            completedAt: nowTs()
+          });
+          sendResponse?.({ ok: true });
+          return;
+        }
 
-      if (message.type === 'GET_LEADS') {
-        const leads = await getLeads();
-        sendResponse?.({ ok: true, leads });
-        return;
-      }
+        case MSG.SCRAPING_ERROR: {
+          const state = await getState();
+          await setState({
+            ...state,
+            status: 'error',
+            scraperType: message.scraperType,
+            error: message.error,
+            updatedAt: nowTs()
+          });
+          sendResponse?.({ ok: true });
+          return;
+        }
 
-      if (message.type === 'CLEAR_LEADS') {
-        await setLeads([]);
-        sendResponse?.({ ok: true });
-        return;
-      }
+        case MSG.SCRAPING_STALL: {
+          const state = await getState();
+          await setState({
+            ...state,
+            status: 'running',
+            stalled: true,
+            stalledAt: nowTs(),
+            stallMessage: 'Scrape appeared stuck — recovery attempted. Check the tab console.'
+          });
+          sendResponse?.({ ok: true });
+          return;
+        }
 
-      // Popup start settings: ensure content script can read them via storage.
-      if (message.type === 'PING') {
-        sendResponse?.({ ok: true });
+        case MSG.GET_STATE: {
+          sendResponse?.({ ok: true, state: await getState() });
+          return;
+        }
+
+        case MSG.GET_RECORDS: {
+          const records = await RecordStore.getAllRecords(message.scraperType);
+          sendResponse?.({ ok: true, records });
+          return;
+        }
+
+        case MSG.GET_RECORD_COUNT: {
+          const count = await RecordStore.countRecords(message.scraperType);
+          sendResponse?.({ ok: true, count });
+          return;
+        }
+
+        case MSG.CLEAR_RECORDS: {
+          await RecordStore.clearRecords();
+          await setState({ status: STATUS_IDLE, progress: null });
+          await chrome.storage.local.remove([MAPS_QUEUE_STORAGE_KEY]);
+          sendResponse?.({ ok: true });
+          return;
+        }
+
+        case MSG.PING: {
+          sendResponse?.({ ok: true });
+          return;
+        }
+
+        case 'LEAD_URL_COLLECTED': {
+          const result = await RecordStore.addRecord(ScraperConstants.SCRAPER_LINKEDIN, {
+            name: message.name,
+            url: message.url
+          });
+          sendResponse?.({ ok: true, ...result });
+          return;
+        }
+
+        case 'GET_LEADS': {
+          sendResponse?.({ ok: true, leads: await RecordStore.getAllRecords() });
+          return;
+        }
+
+        case 'CLEAR_LEADS': {
+          await RecordStore.clearRecords();
+          sendResponse?.({ ok: true });
+          return;
+        }
       }
     } catch (err) {
       console.error('[background] error:', err);
@@ -68,7 +144,5 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   })();
 
-  // Keep the message channel open for async.
   return true;
 });
-
