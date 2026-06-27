@@ -110,7 +110,7 @@ function setScraperModeUI(type) {
   $('countLabel').textContent = isMaps ? 'Businesses collected' : 'Leads collected';
   $('recordsTitle').textContent = isMaps ? 'Businesses' : 'Recent Leads';
   $('brandSub').textContent = isMaps ? 'Full contact details from Maps' : isLinkedIn ? 'Sales Navigator leads' : 'Sales & local leads';
-  $('copy').textContent = isMaps ? 'Copy Leads (name · phone · email · address)' : 'Copy Profile URLs';
+  $('copy').textContent = isMaps ? 'Copy Leads (name · phone · email · address)' : 'Copy Leads (name · email · phone · url)';
 
   const fill = $('progressFill');
   fill.classList.toggle('maps', isMaps);
@@ -215,7 +215,12 @@ function renderRecords(records) {
       meta.textContent = parts.join(' · ') || 'No contact info yet';
       item.appendChild(meta);
     } else {
-      const parts = [record.title, record.company, record.location].filter(Boolean);
+      const parts = [];
+      if (record.email) parts.push('✉ ' + record.email);
+      if (record.phone) parts.push('📞 ' + record.phone);
+      if (record.title) parts.push(record.title);
+      if (record.company) parts.push(record.company);
+      if (record.location) parts.push(record.location);
       if (record.url) {
         const a = document.createElement('a');
         a.href = record.url;
@@ -460,7 +465,7 @@ $('copy').addEventListener('click', async () => {
 
   const text = currentScraperType === SCRAPER_MAPS
     ? records.map((r) => [r.name, r.phone, r.email, r.address, r.website, r.url].filter(Boolean).join(' | ')).join('\n')
-    : records.map((r) => r.url).filter(Boolean).join('\n');
+    : records.map((r) => [r.name, r.email, r.phone, r.title, r.company, r.url].filter(Boolean).join(' | ')).join('\n');
 
   try {
     await navigator.clipboard.writeText(text);

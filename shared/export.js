@@ -55,11 +55,11 @@
 
     const headers = [
       'Full Name', 'Job Title', 'Company', 'LinkedIn URL',
-      'Location', 'Industry', 'Collected At'
+      'Email', 'Phone', 'Location', 'Industry', 'Collected At'
     ];
     const rows = records.map((r) => [
       r.name, r.title, r.company, r.url,
-      r.location, r.industry,
+      r.email, r.phone, r.location, r.industry,
       new Date(r.timestamp || Date.now()).toISOString()
     ]);
     return { headers, rows };

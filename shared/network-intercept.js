@@ -25,13 +25,77 @@ __scraperDefine('NetworkIntercept', () => {
     }
   }
 
+  function pickLinkedInField(node, keys) {
+    for (const key of keys) {
+      const val = node[key];
+      if (val != null && String(val).trim()) return String(val).trim();
+    }
+    return '';
+  }
+
+  function buildPublicProfileUrl(node) {
+    const publicId = pickLinkedInField(node, [
+      'publicIdentifier', 'vanityName', 'profileId'
+    ]) || node.miniProfile?.publicIdentifier || node.profile?.publicIdentifier;
+
+    if (publicId) {
+      const slug = publicId.replace(/^\/in\//, '').split('?')[0];
+      if (slug) return `https://www.linkedin.com/in/${slug}`;
+    }
+
+    const urlCandidates = [
+      node.flagshipProfileUrl,
+      node.publicProfileUrl,
+      node.linkedinProfileUrl,
+      node.profileUrl,
+      node.navigationUrl,
+      node.linkedinUrl,
+      node.linkedInUrl
+    ];
+
+    for (const candidate of urlCandidates) {
+      const href = String(candidate || '');
+      if (!href.includes('/in/')) continue;
+      try {
+        const parsed = new URL(href, 'https://www.linkedin.com');
+        const slug = parsed.pathname.match(/\/in\/([^/?#]+)/i)?.[1];
+        if (slug) return `https://www.linkedin.com/in/${slug}`;
+      } catch {
+        const slug = href.match(/\/in\/([^/?#]+)/i)?.[1];
+        if (slug) return `https://www.linkedin.com/in/${slug}`;
+      }
+    }
+
+    return '';
+  }
+
+  function extractLinkedInEmail(node) {
+    const direct = pickLinkedInField(node, ['email', 'emailAddress', 'primaryEmail']);
+    if (direct) return direct;
+    if (node.contactInfo?.emailAddress) return String(node.contactInfo.emailAddress).trim();
+    if (Array.isArray(node.emails) && node.emails[0]?.email) return String(node.emails[0].email).trim();
+    return '';
+  }
+
+  function extractLinkedInPhone(node) {
+    const direct = pickLinkedInField(node, ['phone', 'phoneNumber', 'mobileNumber']);
+    if (direct) return direct;
+    const phones = node.phoneNumbers || node.contactInfo?.phoneNumbers;
+    if (Array.isArray(phones) && phones.length) {
+      const entry = phones[0];
+      return String(entry?.number || entry?.phoneNumber || entry || '').trim();
+    }
+    return '';
+  }
+
   function parseLinkedInPayload(data) {
     const leads = [];
     walkObject(data, (node) => {
       const name = node.fullName || node.firstName && node.lastName
         ? `${node.firstName} ${node.lastName}`.trim()
         : node.name || node.title?.text || '';
-      const url = node.profileUrl || node.navigationUrl || node.linkedinUrl ||
+      const publicUrl = buildPublicProfileUrl(node);
+      const fallbackUrl = node.profileUrl || node.navigationUrl || node.linkedinUrl ||
         (node.entityUrn && String(node.entityUrn).includes('fs_salesProfile')
           ? `https://www.linkedin.com/sales/lead/${encodeURIComponent(node.entityUrn)}`
           : '');
@@ -39,29 +103,35 @@ __scraperDefine('NetworkIntercept', () => {
       const company = node.companyName || node.currentCompanyName || node.defaultPosition?.companyName || '';
       const location = node.geoRegion || node.location || node.geoLocation?.defaultLocalizedName || '';
       const industry = node.industry || node.industryName || '';
+      const email = extractLinkedInEmail(node);
+      const phone = extractLinkedInPhone(node);
 
-      let normalizedUrl = '';
-      if (url) {
+      let normalizedUrl = publicUrl;
+      if (!normalizedUrl && fallbackUrl) {
         try {
           normalizedUrl = ScraperUtils.normalizeUrl(
-            url.startsWith('http') ? url : new URL(url, 'https://www.linkedin.com').href
+            fallbackUrl.startsWith('http') ? fallbackUrl : new URL(fallbackUrl, 'https://www.linkedin.com').href
           );
         } catch {
-          normalizedUrl = ScraperUtils.normalizeUrl(url);
+          normalizedUrl = ScraperUtils.normalizeUrl(fallbackUrl);
         }
       }
 
-      if ((name || normalizedUrl) && (normalizedUrl.includes('/sales/') || normalizedUrl.includes('/in/') || name)) {
-        leads.push({
-          name: ScraperUtils.normalizeText(name),
-          title: ScraperUtils.normalizeText(title),
-          company: ScraperUtils.normalizeText(company),
-          url: normalizedUrl,
-          location: ScraperUtils.normalizeText(location),
-          industry: ScraperUtils.normalizeText(industry),
-          source: 'api'
-        });
-      }
+      if (!(name || normalizedUrl)) return;
+      if (!normalizedUrl.includes('/in/') && !normalizedUrl.includes('/sales/') && !name) return;
+
+      leads.push({
+        name: ScraperUtils.normalizeText(name),
+        title: ScraperUtils.normalizeText(title),
+        company: ScraperUtils.normalizeText(company),
+        url: normalizedUrl,
+        location: ScraperUtils.normalizeText(location),
+        industry: ScraperUtils.normalizeText(industry),
+        email: ScraperUtils.normalizeText(email),
+        phone: ScraperUtils.normalizeText(phone),
+        publicIdentifier: node.publicIdentifier || node.vanityName || '',
+        source: 'api'
+      });
     });
     return leads;
   }

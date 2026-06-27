@@ -38,8 +38,8 @@
       "[data-anonymize=\"industry\"]"
     ],
     "url": [
-      "a[href*=\"/sales/lead/\"]",
       "a[href*=\"/in/\"]",
+      "a[href*=\"/sales/lead/\"]",
       "a[data-control-name=\"view_lead_panel_via_search_lead_name\"]",
       "a[data-control-name=\"search_srp_result\"]"
     ],

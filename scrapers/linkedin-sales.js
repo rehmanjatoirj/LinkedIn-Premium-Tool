@@ -3,7 +3,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
   const SCOPE = 'linkedin';
 
   let sel = {};
-  let processedUrls = new Set();
+  let processedKeys = new Set();
   let progress = { total: 0, processed: 0, success: 0, failed: 0, startTime: 0, elapsedMs: 0 };
 
   async function loadSelectors() {
@@ -28,20 +28,80 @@ __scraperDefine('LinkedInSalesScraper', () => {
     return el ? ScraperUtils.normalizeText(el.textContent) : '';
   }
 
+  function normalizeInUrl(href) {
+    if (!href) return '';
+    try {
+      const parsed = new URL(href, location.origin);
+      const slug = parsed.pathname.match(/\/in\/([^/?#]+)/i)?.[1];
+      if (!slug) return '';
+      return `https://www.linkedin.com/in/${decodeURIComponent(slug)}`;
+    } catch {
+      const slug = String(href).match(/\/in\/([^/?#]+)/i)?.[1];
+      return slug ? `https://www.linkedin.com/in/${decodeURIComponent(slug)}` : '';
+    }
+  }
+
   function extractUrlFromCard(card) {
-    for (const selector of sel.url || []) {
-      for (const link of card.querySelectorAll(selector)) {
-        const href = link.getAttribute('href') || '';
-        if (href.includes('/sales/lead/') || href.includes('/in/')) {
-          try {
-            return ScraperUtils.normalizeUrl(new URL(href, location.origin).href);
-          } catch {
-            return ScraperUtils.normalizeUrl(href);
-          }
+    let inUrl = '';
+    let salesUrl = '';
+
+    for (const link of card.querySelectorAll('a[href]')) {
+      const href = link.getAttribute('href') || '';
+      if (href.includes('/in/')) {
+        inUrl = inUrl || normalizeInUrl(href);
+      } else if (href.includes('/sales/lead/')) {
+        try {
+          salesUrl = salesUrl || ScraperUtils.normalizeUrl(new URL(href, location.origin).href);
+        } catch {
+          salesUrl = salesUrl || ScraperUtils.normalizeUrl(href);
         }
       }
     }
-    return '';
+
+    return inUrl || salesUrl;
+  }
+
+  function leadKey(lead) {
+    const url = lead?.url || '';
+    const inSlug = url.match(/\/in\/([^/?#]+)/i)?.[1];
+    if (inSlug) return `in:${inSlug.toLowerCase()}`;
+    const salesSlug = url.match(/\/sales\/lead\/([^/?#]+)/i)?.[1];
+    if (salesSlug) return `sales:${salesSlug.toLowerCase()}`;
+    return `name:${(lead?.name || '').toLowerCase()}`;
+  }
+
+  function preferPublicUrl(a, b) {
+    const aIn = normalizeInUrl(a) || (a?.includes('/in/') ? a : '');
+    const bIn = normalizeInUrl(b) || (b?.includes('/in/') ? b : '');
+    return aIn || bIn || a || b || '';
+  }
+
+  function mergeLeadRecords(base, incoming) {
+    if (!base) return incoming;
+    if (!incoming) return base;
+    return {
+      ...base,
+      ...incoming,
+      name: incoming.name || base.name,
+      title: incoming.title || base.title,
+      company: incoming.company || base.company,
+      location: incoming.location || base.location,
+      industry: incoming.industry || base.industry,
+      email: incoming.email || base.email || '',
+      phone: incoming.phone || base.phone || '',
+      url: preferPublicUrl(incoming.url, base.url),
+      source: incoming.source || base.source
+    };
+  }
+
+  function normalizeLeadRecord(lead) {
+    const url = preferPublicUrl(lead.url, '');
+    return {
+      ...lead,
+      url: normalizeInUrl(url) || url,
+      email: lead.email || '',
+      phone: lead.phone || ''
+    };
   }
 
   function isLeadCard(card) {
@@ -82,15 +142,17 @@ __scraperDefine('LinkedInSalesScraper', () => {
       const link = queryFirst(card, sel.url);
       if (link) name = ScraperUtils.normalizeText(link.textContent);
     }
-    return {
+    return normalizeLeadRecord({
       name,
       title: queryText(card, sel.title),
       company: queryText(card, sel.company),
       url,
       location: queryText(card, sel.location),
       industry: queryText(card, sel.industry),
+      email: '',
+      phone: '',
       source: 'dom'
-    };
+    });
   }
 
   function collectAllLeadsFromDom() {
@@ -98,7 +160,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
     const seen = new Set();
     for (const card of findResultCards()) {
       const lead = extractLeadFromCard(card);
-      const key = lead.url || lead.name;
+      const key = leadKey(lead);
       if (!key || seen.has(key)) continue;
       seen.add(key);
       leads.push(lead);
@@ -106,17 +168,22 @@ __scraperDefine('LinkedInSalesScraper', () => {
     return leads;
   }
 
-  function mergeApiLeads(domLeads) {
+  function getAllLeadsFromPage() {
     const map = new Map();
-    for (const lead of domLeads) {
-      map.set(lead.url || lead.name, lead);
-    }
+
     for (const apiLead of NetworkIntercept.getLinkedInLeads()) {
-      const key = apiLead.url || apiLead.name;
+      const lead = normalizeLeadRecord(apiLead);
+      const key = leadKey(lead);
       if (!key) continue;
-      const existing = map.get(key);
-      map.set(key, existing ? { ...apiLead, ...existing, title: existing.title || apiLead.title } : apiLead);
+      map.set(key, mergeLeadRecords(map.get(key), lead));
     }
+
+    for (const domLead of collectAllLeadsFromDom()) {
+      const key = leadKey(domLead);
+      if (!key) continue;
+      map.set(key, mergeLeadRecords(map.get(key), domLead));
+    }
+
     return Array.from(map.values());
   }
 
@@ -141,17 +208,20 @@ __scraperDefine('LinkedInSalesScraper', () => {
   }
 
   async function collectRecord(lead) {
-    if (!lead.url && !lead.name) return false;
-    if (lead.url && processedUrls.has(lead.url)) return true;
+    const record = normalizeLeadRecord(lead);
+    if (!record.url && !record.name) return false;
+
+    const key = leadKey(record);
+    if (key && processedKeys.has(key)) return true;
 
     for (let attempt = 0; attempt < ScraperConstants.MAX_RETRIES; attempt++) {
       try {
         const response = await chrome.runtime.sendMessage({
           type: ScraperConstants.MSG.RECORD_COLLECTED,
           scraperType: ScraperConstants.SCRAPER_LINKEDIN,
-          record: lead
+          record
         });
-        if (lead.url) processedUrls.add(lead.url);
+        if (key) processedKeys.add(key);
         if (response?.duplicate) return true;
         progress.success++;
         return true;
@@ -162,42 +232,39 @@ __scraperDefine('LinkedInSalesScraper', () => {
     }
 
     progress.failed++;
-    RetryQueue.add(lead, 'save failed');
+    RetryQueue.add(record, 'save failed');
     return false;
   }
 
-  async function scrollAndExtractIncremental(onBatch) {
-    const container = queryFirst(document, sel.feedContainer) || document.scrollingElement;
-    const stepPx = 280;
-    let stableRounds = 0;
-    let lastSeenCount = 0;
+  async function scrollToCollectAll() {
+    const container = queryFirst(document, sel.feedContainer);
+    let stable = 0;
+    let lastCount = 0;
 
-    for (let i = 0; i < 150; i++) {
-      if (!(await ScraperUtils.waitWhilePaused())) return;
+    for (let i = 0; i < 250; i++) {
+      if (!(await ScraperUtils.waitWhilePaused())) break;
 
-      const batch = mergeApiLeads(collectAllLeadsFromDom());
-      if (batch.length > lastSeenCount) {
-        lastSeenCount = batch.length;
-        stableRounds = 0;
-        await onBatch(batch);
+      const leads = getAllLeadsFromPage();
+      if (leads.length > lastCount) {
+        lastCount = leads.length;
+        stable = 0;
+        progress.total = Math.max(progress.total, leads.length);
+        await sendProgress();
       } else {
-        stableRounds++;
+        stable++;
       }
 
       if (container) {
-        container.scrollTop += stepPx;
+        container.scrollTop = container.scrollHeight;
       }
-      window.scrollBy(0, stepPx);
+      window.scrollTo(0, document.documentElement.scrollHeight);
 
-      await ScraperUtils.waitForStableCount(
-        () => mergeApiLeads(collectAllLeadsFromDom()).length,
-        { stableMs: 600, timeoutMs: 3000, pollMs: 150 }
-      );
+      await ScraperUtils.sleep(350);
 
-      if (stableRounds >= 4) break;
+      if (stable >= 8) break;
     }
 
-    return mergeApiLeads(collectAllLeadsFromDom());
+    return getAllLeadsFromPage();
   }
 
   function findNextPageButton() {
@@ -222,27 +289,27 @@ __scraperDefine('LinkedInSalesScraper', () => {
   async function waitForPageChange(prevUrl, prevCount) {
     await ScraperUtils.waitForCondition(() => {
       if (location.href !== prevUrl) return true;
-      return findResultCards().length !== prevCount && findResultCards().length > 0;
-    }, { timeoutMs: 8000 });
-    await ScraperUtils.sleepJitter(800);
+      return getAllLeadsFromPage().length !== prevCount && getAllLeadsFromPage().length > 0;
+    }, { timeoutMs: 10000 });
+    await ScraperUtils.sleepJitter(1000);
   }
 
   async function processLeads(leads, delayMs) {
-    progress.total = Math.max(progress.total, progress.processed + leads.length);
+    progress.total = Math.max(progress.total, leads.length);
     await sendProgress();
 
     for (const lead of leads) {
       if (!(await ScraperUtils.waitWhilePaused())) return false;
 
-      const key = lead.url || lead.name;
-      if (key && lead.url && processedUrls.has(lead.url)) {
+      const key = leadKey(lead);
+      if (key && processedKeys.has(key)) {
         progress.processed++;
         continue;
       }
 
       ScraperUtils.log(SCOPE, 'Processing:', lead);
       const ok = await collectRecord(lead);
-      if (!ok && !lead.url) {
+      if (!ok && !lead.url && !lead.name) {
         RetryQueue.add(lead, 'empty or failed extraction');
       }
 
@@ -259,17 +326,18 @@ __scraperDefine('LinkedInSalesScraper', () => {
     ScraperUtils.warn(SCOPE, 'Attempting stall recovery — re-scroll and re-extract');
     window.scrollTo(0, 0);
     await ScraperUtils.sleep(500);
-    const leads = await scrollAndExtractIncremental(async () => {});
-    const pending = leads.filter((l) => l.url && !processedUrls.has(l.url));
+    const leads = await scrollToCollectAll();
+    const pending = leads.filter((l) => !processedKeys.has(leadKey(l)));
     if (pending.length) await processLeads(pending, 300);
   }
 
   async function run() {
     NetworkIntercept.install();
     RetryQueue.clear();
-    processedUrls = new Set();
+    processedKeys = new Set();
     progress = { total: 0, processed: 0, success: 0, failed: 0, startTime: Date.now(), elapsedMs: 0 };
 
+    await ScraperUtils.waitForDomReady();
     await loadSelectors();
 
     const preflight = await PreflightCheck.run(ScraperConstants.SCRAPER_LINKEDIN);
@@ -282,7 +350,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
     const collectAllPages = Boolean(settings.collectAllPages);
 
     await ScraperUtils.waitForElement(sel.card || sel.url, { timeoutMs: 12000 });
-    await ScraperUtils.sleepJitter(500);
+    await ScraperUtils.sleepJitter(800);
 
     const seenKeys = new Set();
     let pageNum = 1;
@@ -290,19 +358,16 @@ __scraperDefine('LinkedInSalesScraper', () => {
     while (true) {
       if (!(await ScraperUtils.waitWhilePaused())) break;
 
-      const allLeads = await scrollAndExtractIncremental(async (batch) => {
-        progress.total = Math.max(progress.total, batch.length);
-        await sendProgress();
-      });
+      const allLeads = await scrollToCollectAll();
 
       const newLeads = allLeads.filter((l) => {
-        const key = l.url || l.name;
+        const key = leadKey(l);
         if (!key || seenKeys.has(key)) return false;
         seenKeys.add(key);
         return true;
       });
 
-      ScraperUtils.log(SCOPE, `Page ${pageNum}: ${newLeads.length} new leads (${allLeads.length} total visible)`);
+      ScraperUtils.log(SCOPE, `Page ${pageNum}: ${newLeads.length} new leads (${allLeads.length} total on page)`);
       await processLeads(newLeads, delayMs);
 
       if (!collectAllPages) break;
@@ -311,11 +376,12 @@ __scraperDefine('LinkedInSalesScraper', () => {
       if (!nextBtn) break;
 
       const prevUrl = location.href;
-      const prevCount = findResultCards().length;
+      const prevCount = getAllLeadsFromPage().length;
       nextBtn.click();
       await waitForPageChange(prevUrl, prevCount);
       pageNum++;
       seenKeys.clear();
+      await ScraperUtils.sleepJitter(600);
     }
 
     const retryResult = await RetryQueue.processAll(collectRecord, { delayMs: 600 });
@@ -334,7 +400,7 @@ __scraperDefine('LinkedInSalesScraper', () => {
 
   function verifySelectors() {
     const cards = findResultCards();
-    const sample = cards.length ? extractLeadFromCard(cards[0]) : NetworkIntercept.getLinkedInLeads()[0];
+    const sample = cards.length ? extractLeadFromCard(cards[0]) : normalizeLeadRecord(NetworkIntercept.getLinkedInLeads()[0] || {});
     return {
       cardsFound: cards.length,
       apiLeads: NetworkIntercept.getLinkedInLeads().length,
