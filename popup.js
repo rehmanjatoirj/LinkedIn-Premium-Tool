@@ -81,6 +81,22 @@ async function setSettings(settings) {
   await chrome.storage.local.set({ [SETTINGS_STORAGE_KEY]: settings });
 }
 
+function highlightLeadPreset(value) {
+  const n = Number(value);
+  document.querySelectorAll('.preset-btn').forEach((btn) => {
+    btn.classList.toggle('active', Number(btn.dataset.max) === n);
+  });
+}
+
+document.querySelectorAll('.preset-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    $('linkedinMax').value = btn.dataset.max;
+    highlightLeadPreset(btn.dataset.max);
+  });
+});
+
+$('linkedinMax').addEventListener('input', () => highlightLeadPreset($('linkedinMax').value));
+
 async function loadSettingsIntoUI() {
   const result = await chrome.storage.local.get([SETTINGS_STORAGE_KEY]);
   const s = result[SETTINGS_STORAGE_KEY] || {};
@@ -89,6 +105,7 @@ async function loadSettingsIntoUI() {
   $('delay').value = String(Number.isFinite(Number(s.delayMs)) ? Number(s.delayMs) : 400);
   const linkedinMax = Number.isFinite(Number(s.linkedinMaxResults)) ? Number(s.linkedinMaxResults) : 25;
   $('linkedinMax').value = String(Math.min(500, Math.max(1, linkedinMax)));
+  highlightLeadPreset(linkedinMax);
   const mapsMax = Number.isFinite(Number(s.mapsMaxResults)) ? Number(s.mapsMaxResults) : 20;
   $('mapsMax').value = String(Math.min(100, Math.max(1, mapsMax)));
 }
@@ -397,9 +414,7 @@ $('start').addEventListener('click', async () => {
     setStatusMessage(
       currentScraperType === SCRAPER_MAPS
         ? `Clicking up to ${$('mapsMax').value || 20} results — extracting full contact details…`
-        : $('linkedinQuick').checked
-          ? `Quick collect: up to ${$('linkedinMax').value || 25} leads (URLs only, no panel)…`
-          : `Collecting up to ${$('linkedinMax').value || 25} leads with profile URLs and contact info…`,
+        : `Saving ${$('linkedinMax').value || 25} leads${$('linkedinQuick').checked ? ' (quick mode)' : ''}…`,
       ''
     );
 

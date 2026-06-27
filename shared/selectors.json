@@ -61,6 +61,8 @@
       "aside.scaffold-layout__aside",
       "section[data-x--lead--profile-card-container]",
       "div[class*=\"lead-panel\"]",
+      "div[class*=\"leadPanel\"]",
+      "div[class*=\"profile-card\"]",
       "div[role=\"complementary\"]"
     ],
     "publicProfileLink": [

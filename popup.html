@@ -265,6 +265,34 @@
         cursor: pointer;
       }
 
+      .preset-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-top: -4px;
+      }
+
+      .preset-label {
+        font-size: 11px;
+        color: var(--muted);
+        margin-right: 2px;
+      }
+
+      .preset-btn {
+        padding: 4px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 6px;
+        background: var(--bg);
+      }
+
+      .preset-btn.active {
+        background: #dbeafe;
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+
       button {
         font-family: inherit;
         font-size: 13px;
@@ -506,8 +534,16 @@
           </label>
         </div>
         <div class="field field-row">
-          <label for="linkedinMax">Max leads to collect</label>
+          <label for="linkedinMax">How many leads to save</label>
           <input id="linkedinMax" type="number" min="1" max="500" value="25" />
+        </div>
+        <div class="field preset-row">
+          <span class="preset-label">Quick pick:</span>
+          <button type="button" class="preset-btn" data-max="10">10</button>
+          <button type="button" class="preset-btn" data-max="15">15</button>
+          <button type="button" class="preset-btn" data-max="20">20</button>
+          <button type="button" class="preset-btn" data-max="25">25</button>
+          <button type="button" class="preset-btn" data-max="50">50</button>
         </div>
         <div class="field">
           <label class="check-row">
